@@ -12,6 +12,7 @@
 #define PACKET_SIZE 64
 #define MAX_WAIT_TIME 5
 #define MAX_NO_PACKETS 3
+#define MAX_HOPS 30
 
 // 计算校验和
 unsigned short calcChecksum(unsigned short *addr, int len)
@@ -38,7 +39,7 @@ unsigned short calcChecksum(unsigned short *addr, int len)
 }
 
 // 发送ICMP请求
-int sendPingRequest(int sockfd, struct sockaddr_in *dest_addr, int packet_size, int seq)
+int sendPingRequest(int sockfd, struct sockaddr_in *dest_addr, int packet_size, int seq, int ttl)
 {
     struct icmp *icmp_packet;
     char send_packet[PACKET_SIZE];
@@ -55,6 +56,12 @@ int sendPingRequest(int sockfd, struct sockaddr_in *dest_addr, int packet_size, 
     packet_len = 8 + packet_size;
     icmp_packet->icmp_cksum = 0;
     icmp_packet->icmp_cksum = calcChecksum((unsigned short *)icmp_packet, packet_len);
+
+	//设置ttl
+	if (setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(int)) == -1) {
+        perror("setsockopt error");
+        return -1;
+    }
 
     if (sendto(sockfd, send_packet, packet_len, 0, 
 		(struct sockaddr *)dest_addr, sizeof(struct sockaddr)) == -1) {
@@ -88,22 +95,40 @@ int receivePingResponse(int sockfd, int seq)
         struct ip *ip_packet = (struct ip *)recv_packet;
         struct icmp *icmp_packet = (struct icmp *)(recv_packet + (ip_packet->ip_hl << 2));
 
-        if (icmp_packet->icmp_type == ICMP_ECHOREPLY && icmp_packet->icmp_id == getpid()
-			&& icmp_packet->icmp_seq == seq) {
-	    struct timeval *st = (struct timeval *)icmp_packet->icmp_data;
-	    struct timeval ct;
-	    gettimeofday(&ct, NULL);
+        if (icmp_packet->icmp_type == ICMP_TIME_EXCEEDED && icmp_packet->icmp_code == ICMP_EXC_TTL
+            && ip_packet->ip_ttl <= MAX_HOPS) {
+            struct timeval *st = (struct timeval *)(icmp_packet->icmp_data + 8);
+			struct timeval ct;
+	    	gettimeofday(&ct, NULL);
 
-	    double rtt = (ct.tv_sec - st->tv_sec) * 1000.0 + (ct.tv_usec - st->tv_usec) / 1000.0;
-            printf("%d bytes from %s: icmp_seq=%d time=%.2fms ttl=%d\n",
-           	packet_len, inet_ntoa(from.sin_addr), seq, rtt, ip_packet->ip_ttl);
-	    // printf("ICMP response received.\n");
-            break;
+            double rtt = (ct.tv_sec - st->tv_sec) * 1000.0 + (ct.tv_usec - st->tv_usec) / 1000.0;
+			if (seq % 3 == 1 && seq != 1) printf("%s   ", inet_ntoa(from.sin_addr));
+            printf("%.2fms    ",rtt);
+			return 0;
+        }
+
+        else if (icmp_packet->icmp_type == ICMP_ECHOREPLY && icmp_packet->icmp_id == getpid()
+			&& icmp_packet->icmp_seq == seq) {
+	    	struct timeval *st = (struct timeval *)icmp_packet->icmp_data;
+	    	struct timeval ct;
+	    	gettimeofday(&ct, NULL);
+
+	    	double rtt = (ct.tv_sec - st->tv_sec) * 1000.0 + (ct.tv_usec - st->tv_usec) / 1000.0;
+			if (seq % 3 == 1 && seq != 1) printf("%s   ", inet_ntoa(from.sin_addr));
+            printf("%.2fms    ",rtt);
+            return 1;
         }
     }
 
     return 0;
 }
+
+
+int create_sock(int ttl)
+{
+
+}
+
 
 int main(int argc, char *argv[]) {
     int sockfd;
@@ -112,27 +137,12 @@ int main(int argc, char *argv[]) {
     int packet_size = PACKET_SIZE;
     int count = MAX_NO_PACKETS;
 
-    if (argc < 3) {
-        printf("error: myping dst_addr [-l package_size] [-n count]\n");
-    	exit(1);
+    if (argc != 2) {
+        printf("Usage: %s <host>\n", argv[0]);
+        return 1;
     }
-
     // 解析命令行参数
     char *dest_ip = argv[1];
-    int i;
-    for (i = 2; i < argc; i++) {
-        if (strcmp(argv[i], "-l") == 0) {
-            if (i + 1 < argc) {
-                packet_size = atoi(argv[i + 1]);
-                i++;
-            }
-        } else if (strcmp(argv[i], "-n") == 0) {
-            if (i + 1 < argc) {
-                count = atoi(argv[i + 1]);
-                i++;
-            }
-        }
-    }
 
     // 创建socket
     if ((sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) == -1) {
@@ -152,21 +162,35 @@ int main(int argc, char *argv[]) {
         memcpy((char *)&dest_addr.sin_addr, host->h_addr, host->h_length);
     }
 
+	printf("通过最多30个跃点跟踪：\n");
+	printf("到 %s [%s] 的路由:\n\n", dest_ip, inet_ntoa(dest_addr.sin_addr));
+
     // 发送PING请求并接收应答
-    int sent_packets = 0;
     int seq = 1;
-    while (sent_packets < count) {
-        if (sendPingRequest(sockfd, &dest_addr, packet_size, seq) == -1) {
-            exit(1);
-        }
+	int ttl = 1;
+    while (ttl < MAX_HOPS) {
+		printf("%2d   \n", ttl);
+		int res;
+		for(int i = 0; i < 3; i++) {
+        	if (sendPingRequest(sockfd, &dest_addr, packet_size, seq, ttl) == -1) {
+        	    exit(1);
+        	}
 
-        if (receivePingResponse(sockfd, seq) == -1) {
-            printf("icmp_seq=%d failed!\n", seq);
-	    exit(1);
-        }
+			res = receivePingResponse(sockfd, seq);
+        	if (res == -1) {
+        	    printf("icmp_seq=%d failed!\n", seq);
+	    		exit(1);
+        	}
 
-        sent_packets++;
-	seq++;
+			if (res == 1) break;
+			
+			seq++;
+		}
+
+		printf("\n");
+		if(res == 1) 
+			printf("跟踪完成");
+		ttl++;
         sleep(1);  // 1秒钟的延迟
     }
 
