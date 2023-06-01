@@ -15,6 +15,30 @@
 #define PACKET_SIZE  64
 #define TIMEOUT  1
 
+// 计算校验和
+unsigned short calcChecksum(unsigned short *addr, int len)
+{
+    unsigned int sum = 0;
+    unsigned short answer = 0;
+    unsigned short *w = addr;
+    int nleft = len;
+
+    while (nleft > 1) {
+        sum += *w++;
+        nleft -= 2;
+    }
+
+    if (nleft == 1) {
+        *(unsigned char *)(&answer) = *(unsigned char *)w;
+        sum += answer;
+    }
+
+    sum = (sum >> 16) + (sum & 0xFFFF);
+    sum += (sum >> 16);
+    answer = ~sum;
+    return answer;
+}
+
 struct addrinfo* resolve_host(const char* host) 
 {
     struct addrinfo hints, *res;
@@ -53,16 +77,24 @@ int create_socket(int ttl)
 
 int send_icmp_request(int sockfd, const struct sockaddr_in* addr, int seq) 
 {
-    struct icmphdr icmp;
-    char packet[PACKET_SIZE];
-    memset(&icmp, 0, sizeof(icmp));
-    icmp.type = ICMP_ECHO;
-    icmp.code = 0;
-    icmp.un.echo.id = getpid();
-    icmp.un.echo.sequence = seq;
-    memset(packet, 0, sizeof(packet));
-    memcpy(packet, &icmp, sizeof(icmp));
-    if (sendto(sockfd, packet, sizeof(packet), 0, (struct sockaddr *)addr, sizeof(*addr)) < 0) {
+	struct icmp *icmp_packet;
+    char send_packet[PACKET_SIZE];
+    int packet_len;
+
+    icmp_packet = (struct icmp *)send_packet;
+    icmp_packet->icmp_type = ICMP_ECHO;
+    icmp_packet->icmp_code = 0; // 询问报文  
+    icmp_packet->icmp_id = getpid();
+    icmp_packet->icmp_seq = seq;
+    memset(icmp_packet->icmp_data, 0xa5, PACKET_SIZE);
+    gettimeofday((struct timeval *)icmp_packet->icmp_data, NULL);
+
+    packet_len = 8 + PACKET_SIZE;
+    icmp_packet->icmp_cksum = 0;
+    icmp_packet->icmp_cksum = calcChecksum((unsigned short *)icmp_packet, packet_len);
+
+    if (sendto(sockfd, send_packet, packet_len, 0, 
+		(struct sockaddr *)addr, sizeof(struct sockaddr)) == -1) {
         perror("sendto error");
         return -1;
     }
@@ -116,13 +148,13 @@ void tracert(const char* host) {
     char ipstr[INET6_ADDRSTRLEN];
     inet_ntop(res->ai_family, &((struct sockaddr_in *)res->ai_addr)->sin_addr, ipstr, sizeof(ipstr));
     printf("Tracing route to %s [%s] over a maximum of %d hops:\n", host, ipstr, MAX_HOPS);
-    int ttl, seq, sockfd,done = 0;
+    int ttl, seq, sockfd, done = 0;
     struct sockaddr_in addr;
 
     for (ttl = 1; ttl <= MAX_HOPS && !done; ttl++) {
         printf("%2d  ", ttl);
         fflush(stdout);
-        for (seq = 0; seq < 3 && !done; seq++) {
+        for (seq = 0; seq < 3; seq++) {
             sockfd = create_socket(ttl);
             if (sockfd < 0) {
                 return;
@@ -140,7 +172,7 @@ void tracert(const char* host) {
 			struct timeval tv;
 			gettimeofday(&tv, NULL);
 			int ret = recv_icmp_reply(sockfd, &addr, &tv);
-			//printf(" ret = %d ", ret);
+			// printf(" ret = %d ", ret);
 
             if (ret < 0) {
                 close(sockfd);
@@ -157,14 +189,20 @@ void tracert(const char* host) {
 			}
 			else if (ret == 0) continue;
 			else if (seq == 2) {
+				if (done) {
+					printf("%-15s", ipstr1); 
+					break;
+				}
 				printf("\n");
 				continue;
 			}
-			printf("%-15s", ipstr1); 
+			// printf(" seq = %d ", seq);
+			if (seq == 2)
+				printf("%-15s", ipstr1); 
             if (strcmp(ipstr, ipstr1) == 0) {
-				//printf("dddd");
                 done = 1;
             }
+			// if (done & seq == 2) break;
             close(sockfd);
         }
         printf("\n");
