@@ -1,6 +1,5 @@
 ---
 author:
-- 162020321 朱家震
 title: PING程序的实现
 ---
 
@@ -25,13 +24,13 @@ Linux，C
 首先我们在Windows上执行tracert程序，了解我们要做的输出是什么样的，执行出来的效果如下：
 
 <figure id="sw">
-<p><img src="figures/cmd.jpg" style="width:5in" alt="image" /> <span
+<p><img src="report/figures/cmd.jpg" style="width:5in" alt="image" /> <span
 id="sw" label="sw"></span></p>
 <figcaption>windows终端执行结果</figcaption>
 </figure>
 
 <figure id="li">
-<p><img src="figures/linux.jpg" style="width:5in" alt="image" /> <span
+<p><img src="report/figures/linux.jpg" style="width:5in" alt="image" /> <span
 id="li" label="li"></span></p>
 <figcaption>Linux终端执行结果</figcaption>
 </figure>
@@ -39,7 +38,7 @@ id="li" label="li"></span></p>
 我们发现在Linux上执行的traceroute输出都是"\*"，也就是超时，只能收到第一个跃点的地址。通过查询发现linux虚拟机在traceroute时，默认使用UDP报文，而不是使用ICMP报文；而防火墙为了方便网络调试是放行了ICMP报文，但没有放行UDP报文，这就导致了linux虚拟机的traceroute报文（UDP）被防火墙拦截了，windows虚拟机的traceroute报文（ICMP）正常通行。
 
 <figure id="li2">
-<p><img src="figures/linux-true.jpg" style="width:5in" alt="image" />
+<p><img src="report/figures/linux-true.jpg" style="width:5in" alt="image" />
 <span id="li2" label="li2"></span></p>
 <figcaption>Linux终端执行结果</figcaption>
 </figure>
@@ -196,7 +195,7 @@ id="li" label="li"></span></p>
 最终，try3的运行结果如下图所示。
 
 <figure id="rw">
-<p><img src="figures/res.jpg" style="width:5in" alt="image" /> <span
+<p><img src="report/figures/res.jpg" style="width:5in" alt="image" /> <span
 id="rw" label="rw"></span></p>
 <figcaption>myping终端执行结果</figcaption>
 </figure>

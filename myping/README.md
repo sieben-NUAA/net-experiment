@@ -1,6 +1,5 @@
 ---
 author:
-- 162020321 朱家震
 title: PING程序的实现
 ---
 
@@ -27,13 +26,13 @@ Linux，C
 首先我们执行ping程序，了解我们要做的输出是什么样的，执行出来的效果如下：
 
 <figure id="sw">
-<p><img src="figures/win.png" style="width:5in" alt="image" /> <span
+<p><img src="实验报告/figures/win.png" style="width:5in" alt="image" /> <span
 id="sw" label="sw"></span></p>
 <figcaption>windows终端执行结果</figcaption>
 </figure>
 
 <figure id="li">
-<p><img src="figures/linux.png" style="width:5in" alt="image" /> <span
+<p><img src="实验报告/figures/linux.png" style="width:5in" alt="image" /> <span
 id="li" label="li"></span></p>
 <figcaption>Linux终端执行结果</figcaption>
 </figure>
@@ -183,7 +182,7 @@ int receivePingResponse(int sockfd, int seq)
 最后，myping的运行结果如下：
 
 <figure id="rw">
-<p><img src="figures/res.png" style="width:5in" alt="image" /> <span
+<p><img src="实验报告/figures/res.png" style="width:5in" alt="image" /> <span
 id="rw" label="rw"></span></p>
 <figcaption>myping终端执行结果</figcaption>
 </figure>
